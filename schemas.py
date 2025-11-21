@@ -1,48 +1,77 @@
 """
-Database Schemas
+Database Schemas for WhatsApp API Demo
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
-
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Each Pydantic model maps to a MongoDB collection whose name is the lowercase of the class.
+- User -> "user"
+- Instance -> "instance"
+- Message -> "message"
+- Webhook -> "webhook"
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Literal, Dict, Any
+from datetime import datetime
 
-# Example schemas (replace with your own):
 
 class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    email: Optional[EmailStr] = Field(None, description="Email for OTP login")
+    phone: Optional[str] = Field(None, description="Phone number for OTP login (E.164)")
+    name: Optional[str] = Field(None, description="Display name")
+    otp_code: Optional[str] = Field(None, description="Temporary OTP code (demo only)")
+    otp_expires_at: Optional[datetime] = Field(None, description="OTP expiry timestamp")
+    access_tokens: List[str] = Field(default_factory=list, description="Active session tokens")
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
 
-# Add your own schemas here:
-# --------------------------------------------------
+class Instance(BaseModel):
+    user_id: str = Field(..., description="Owner user _id as string")
+    name: str = Field(..., description="Instance label")
+    instance_id: str = Field(..., description="Public instance identifier")
+    token: str = Field(..., description="Secret token to authenticate API calls")
+    is_authenticated: bool = Field(False, description="Whether device QR has been scanned (simulated)")
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+
+class Message(BaseModel):
+    instance_id: str = Field(..., description="Owning instance id")
+    to: str = Field(..., description="Recipient MSISDN in E.164 format")
+    type: Literal["text", "image", "document", "audio", "video", "interactive"] = Field("text")
+    text: Optional[str] = Field(None, description="Text body if type=text")
+    media_url: Optional[str] = Field(None, description="URL to media if applicable")
+    interactive: Optional[Dict[str, Any]] = Field(None, description="Interactive payload for buttons/lists")
+    status: Literal["queued", "sent", "delivered", "read", "failed"] = Field("queued")
+    error: Optional[str] = None
+    message_id: str = Field(..., description="Public message id for tracking")
+
+
+class Webhook(BaseModel):
+    instance_id: str = Field(..., description="Instance this webhook belongs to")
+    url: str = Field(..., description="Callback URL")
+    events: List[str] = Field(default_factory=lambda: ["message.status", "message.incoming"], description="Subscribed events")
+
+
+# Lightweight request models for validation (used only in FastAPI routes)
+class OTPRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+
+class OTPVerify(BaseModel):
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    code: str
+
+class InstanceCreate(BaseModel):
+    name: str
+
+class SendMessage(BaseModel):
+    instance_id: str
+    token: str
+    to: str
+    type: Optional[str] = "text"
+    text: Optional[str] = None
+    media_url: Optional[str] = None
+    interactive: Optional[Dict[str, Any]] = None
+
+class RegisterWebhook(BaseModel):
+    instance_id: str
+    token: str
+    url: str
+    events: Optional[List[str]] = None
